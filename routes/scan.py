@@ -1,14 +1,11 @@
 from flask import Blueprint, request, jsonify
 import pyodbc
 import requests
-from google import genai
+from config import CONNECTION_STRING, VT_API_KEY
 import json
 import time
-from config import CONNECTION_STRING, VT_API_KEY, GEMINI_API_KEY
 
 scan_bp = Blueprint('scan', __name__)
-
-client = genai.Client(api_key=GEMINI_API_KEY)
 
 def get_db():
     return pyodbc.connect(CONNECTION_STRING)
@@ -79,24 +76,7 @@ def check_url():
         VALUES (?, ?, ?, ?, ?)
     """, scan_id, engines_flagged, total_engines, threat_category, json.dumps(stats))
 
-    prompt = f"""
-    A URL was scanned for phishing/malware. Here are the results:
-    - URL: {url}
-    - Engines flagged: {engines_flagged} out of {total_engines}
-    - Threat category: {threat_category}
-    - Stats: {stats}
-
-    Give a 3-4 sentence plain English security assessment.
-    State if it is safe or dangerous, why, and what the user should do.
-    End with a risk level: Low, Medium, or High.
-    """
-
-    ai_response = client.models.generate_content(
-        model='gemini-2.0-flash',
-        contents=prompt
-    )
-    summary = ai_response.text
-
+    summary = f"This URL was flagged by {engines_flagged} out of {total_engines} security engines. Threat category: {threat_category}. AI summary will be available soon."
     risk_level = 'High' if status == 'malicious' else 'Medium' if status == 'suspicious' else 'Low'
 
     cursor.execute("""
