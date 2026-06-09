@@ -1,14 +1,38 @@
 from flask import Blueprint, request, jsonify
 import pyodbc
 import requests
-from config import CONNECTION_STRING, VT_API_KEY
+from google import genai
 import json
 import time
+from config import CONNECTION_STRING, VT_API_KEY, GEMINI_API_KEY
 
 scan_bp = Blueprint('scan', __name__)
 
+client = genai.Client(api_key=GEMINI_API_KEY)
+
 def get_db():
     return pyodbc.connect(CONNECTION_STRING)
+
+def get_ai_summary(url, engines_flagged, total_engines, threat_category, stats):
+    try:
+        prompt = f"""
+        A URL was scanned for phishing/malware. Here are the results:
+        - URL: {url}
+        - Engines flagged: {engines_flagged} out of {total_engines}
+        - Threat category: {threat_category}
+        - Stats: {stats}
+
+        Give a 3-4 sentence plain English security assessment.
+        State if it is safe or dangerous, why, and what the user should do.
+        End with a risk level: Low, Medium, or High.
+        """
+        ai_response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=prompt
+        )
+        return ai_response.text
+    except Exception:
+        return f"This URL was flagged by {engines_flagged} out of {total_engines} security engines as {threat_category}. {'Do not visit this URL.' if threat_category == 'malicious' else 'Exercise caution with this URL.' if threat_category == 'suspicious' else 'This URL appears safe.'}"
 
 @scan_bp.route('/check', methods=['POST'])
 def check_url():
@@ -46,7 +70,6 @@ def check_url():
         return jsonify({'error': 'VirusTotal submission failed', 'details': response.text}), 500
 
     analysis_id = response.json()['data']['id']
-
     time.sleep(15)
 
     result_url = f"https://www.virustotal.com/api/v3/analyses/{analysis_id}"
@@ -76,7 +99,7 @@ def check_url():
         VALUES (?, ?, ?, ?, ?)
     """, scan_id, engines_flagged, total_engines, threat_category, json.dumps(stats))
 
-    summary = f"This URL was flagged by {engines_flagged} out of {total_engines} security engines. Threat category: {threat_category}. AI summary will be available soon."
+    summary = get_ai_summary(url, engines_flagged, total_engines, threat_category, stats)
     risk_level = 'High' if status == 'malicious' else 'Medium' if status == 'suspicious' else 'Low'
 
     cursor.execute("""
