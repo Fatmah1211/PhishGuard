@@ -52,12 +52,16 @@ def check_url():
         scan_id = existing[0]
         cursor.execute("SELECT summary, risk_level FROM AIAnalysis WHERE scan_id = ?", scan_id)
         ai_result = cursor.fetchone()
+        cursor.execute("SELECT engines_flagged, total_engines FROM ThreatReports WHERE scan_id = ?", scan_id)
+        threat = cursor.fetchone()
         conn.close()
         return jsonify({
             'url': url,
             'status': existing[1],
             'summary': ai_result[0] if ai_result else 'No summary available',
             'risk_level': ai_result[1] if ai_result else 'Unknown',
+            'engines_flagged': threat[0] if threat else 0,
+            'total_engines': threat[1] if threat else 0,
             'source': 'cache'
         })
 
